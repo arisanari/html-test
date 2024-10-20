@@ -1,1 +1,218 @@
-<p>aaaaa</p>
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Button } from "@/components/ui/button"
+import { motion } from "framer-motion"
+
+type CellValue = 'black' | 'white' | null
+
+const BOARD_SIZE = 8
+
+export default function Othello() {
+  const [board, setBoard] = useState<CellValue[][]>(initializeBoard())
+  const [currentPlayer, setCurrentPlayer] = useState<'black' | 'white'>('black')
+  const [gameOver, setGameOver] = useState(false)
+  const [winner, setWinner] = useState<'black' | 'white' | 'draw' | null>(null)
+  const [score, setScore] = useState({ black: 2, white: 2 })
+  const [flippedCells, setFlippedCells] = useState<[number, number][]>([])
+  const [winProbability, setWinProbability] = useState<{ black: number; white: number }>({ black: 50, white: 50 })
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFlippedCells([])
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [flippedCells])
+
+  function initializeBoard(): CellValue[][] {
+    const board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(null))
+    const mid = BOARD_SIZE / 2
+    board[mid - 1][mid - 1] = board[mid][mid] = 'white'
+    board[mid - 1][mid] = board[mid][mid - 1] = 'black'
+    return board
+  }
+
+  function handleCellClick(row: number, col: number) {
+    if (gameOver || board[row][col] !== null) return
+
+    const newBoard = [...board.map(row => [...row])]
+    const flipped = getFlippedCells(newBoard, row, col, currentPlayer)
+
+    if (flipped.length === 0) return
+
+    newBoard[row][col] = currentPlayer
+    flipped.forEach(([r, c]) => {
+      newBoard[r][c] = currentPlayer
+    })
+
+    setBoard(newBoard)
+    setFlippedCells(flipped)
+    updateScore(newBoard)
+    const nextPlayer = currentPlayer === 'black' ? 'white' : 'black'
+    if (hasValidMoves(newBoard, nextPlayer)) {
+      setCurrentPlayer(nextPlayer)
+    } else if (hasValidMoves(newBoard, currentPlayer)) {
+      // パス
+      alert(`${nextPlayer === 'black' ? '黒' : '白'}の手番をパスします`)
+    } else {
+      endGame(newBoard)
+    }
+  }
+
+  function getFlippedCells(board: CellValue[][], row: number, col: number, player: 'black' | 'white'): [number, number][] {
+    const directions = [
+      [-1, -1], [-1, 0], [-1, 1],
+      [0, -1],           [0, 1],
+      [1, -1],  [1, 0],  [1, 1]
+    ]
+
+    const flippedCells: [number, number][] = []
+
+    directions.forEach(([dx, dy]) => {
+      let x = row + dx
+      let y = col + dy
+      const cellsToFlip: [number, number][] = []
+
+      while (x >= 0 && x < BOARD_SIZE && y >= 0 && y < BOARD_SIZE) {
+        if (board[x][y] === null) break
+        if (board[x][y] === player) {
+          flippedCells.push(...cellsToFlip)
+          break
+        }
+        cellsToFlip.push([x, y])
+        x += dx
+        y += dy
+      }
+    })
+
+    return flippedCells
+  }
+
+  function hasValidMoves(board: CellValue[][], player: 'black' | 'white'): boolean {
+    for (let row = 0; row < BOARD_SIZE; row++) {
+      for (let col = 0; col < BOARD_SIZE; col++) {
+        if (board[row][col] === null && getFlippedCells(board, row, col, player).length > 0) {
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  function updateScore(board: CellValue[][]) {
+    const newScore = { black: 0, white: 0 }
+    board.forEach(row => {
+      row.forEach(cell => {
+        if (cell === 'black') newScore.black++
+        if (cell === 'white') newScore.white++
+      })
+    })
+    setScore(newScore)
+    calculateWinProbability(board)
+  }
+
+  function calculateWinProbability(board: CellValue[][]) {
+    const totalCells = BOARD_SIZE * BOARD_SIZE
+    const occupiedCells = board.flat().filter(cell => cell !== null).length
+    const gameProgress = occupiedCells / totalCells
+
+    const blackCount = score.black
+    const whiteCount = score.white
+
+    let blackProb = (blackCount / (blackCount + whiteCount)) * 100
+    let whiteProb = (whiteCount / (blackCount + whiteCount)) * 100
+
+    // ゲームの進行に応じて確率を調整
+    blackProb = blackProb * gameProgress + 50 * (1 - gameProgress)
+    whiteProb = whiteProb * gameProgress + 50 * (1 - gameProgress)
+
+    setWinProbability({ 
+      black: Math.round(blackProb), 
+      white: Math.round(whiteProb) 
+    })
+  }
+
+  function endGame(board: CellValue[][]) {
+    setGameOver(true)
+    updateScore(board)
+    if (score.black > score.white) {
+      setWinner('black')
+    } else if (score.white > score.black) {
+      setWinner('white')
+    } else {
+      setWinner('draw')
+    }
+  }
+
+  function resetGame() {
+    setBoard(initializeBoard())
+    setCurrentPlayer('black')
+    setGameOver(false)
+    setWinner(null)
+    setScore({ black: 2, white: 2 })
+    setFlippedCells([])
+    setWinProbability({ black: 50, white: 50 })
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <h1 className="text-4xl font-bold mb-4">オセロ</h1>
+      <div className="mb-4 flex justify-between items-center w-full max-w-md">
+        <div>
+          <span className="font-bold">現在のプレイヤー: </span>
+          <span className={`inline-block w-4 h-4 rounded-full ${currentPlayer === 'black' ? 'bg-black' : 'bg-white border border-black'}`}></span>
+        </div>
+        <div>
+          <span className="font-bold">スコア: </span>
+          <span className="text-black">●{score.black}</span> - <span className="text-white bg-black px-1">●{score.white}</span>
+        </div>
+        <div>
+          <span className="font-bold">勝率: </span>
+          <span className="text-black">●{winProbability.black}%</span> - <span className="text-white bg-black px-1">●{winProbability.white}%</span>
+        </div>
+      </div>
+      <div className="bg-green-600 p-2 md:p-4 rounded-lg shadow-lg">
+        {board.map((row, rowIndex) => (
+          <div key={rowIndex} className="flex">
+            {row.map((cell, colIndex) => (
+              <button
+                key={colIndex}
+                className="w-8 h-8 md:w-12 md:h-12 border border-green-700 flex items-center justify-center"
+                onClick={() => handleCellClick(rowIndex, colIndex)}
+                disabled={gameOver}
+              >
+                {cell && (
+                  <motion.div
+                    className={`w-6 h-6 md:w-10 md:h-10 rounded-full ${cell === 'black' ? 'bg-black' : 'bg-white'}`}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.2 }}
+                  />
+                )}
+                {flippedCells.some(([r, c]) => r === rowIndex && c === colIndex) && (
+                  <motion.div
+                    className={`absolute w-6 h-6 md:w-10 md:h-10 rounded-full ${currentPlayer === 'black' ? 'bg-black' : 'bg-white'}`}
+                    initial={{ rotateY: 0 }}
+                    animate={{ rotateY: 180 }}
+                    transition={{ duration: 0.5 }}
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+      {gameOver && (
+        <div className="mt-4 text-center">
+          <p className="text-xl font-bold mb-2">ゲーム終了！</p>
+          {winner === 'draw' ? (
+            <p>引き分けです！</p>
+          ) : (
+            <p>勝者: {winner === 'black' ? '黒' : '白'}</p>
+          )}
+          <Button onClick={resetGame} className="mt-2">新しいゲームを始める</Button>
+        </div>
+      )}
+    </div>
+  )
+}
